@@ -29,7 +29,12 @@ public static class DependencyInjection
         services.AddSingleton(TimeProvider.System);
         services.AddHealthChecks().AddDbContextCheck<CatalogDbContext>("database");
 
+        services.AddScoped<ICatalogReadRepository, CatalogReadRepository>();
+
         services.AddSingleton<ICatalogEventPublisher, LoggingCatalogEventPublisher>();
+        services.AddSingleton<ReplayJobQueue>();
+        services.AddSingleton<IReplayJobQueue>(sp => sp.GetRequiredService<ReplayJobQueue>());
+        services.AddHostedService<ReplayWorker>();
 
         services.AddRawg(configuration);
         services.AddCovers(configuration);

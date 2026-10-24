@@ -9,6 +9,10 @@ public interface ICatalogRepository
 
     Task<List<Genre>> GetGenresBySlugAsync(IReadOnlyCollection<string> slugs, CancellationToken cancellationToken);
 
+    Task<List<Platform>> GetPlatformsByIdAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken);
+
+    Task<List<Genre>> GetGenresByIdAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken);
+
     /// <summary>Loads games with platforms and genres.</summary>
     Task<List<Game>> GetGamesByRawgIdAsync(IReadOnlyCollection<int> rawgIds, CancellationToken cancellationToken);
 

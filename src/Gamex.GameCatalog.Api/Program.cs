@@ -1,3 +1,4 @@
+using Gamex.GameCatalog.Api.Auth;
 using Gamex.GameCatalog.Api.Endpoints;
 using Gamex.GameCatalog.Application;
 using Gamex.GameCatalog.Infrastructure;
@@ -7,6 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi();
+builder.Services.AddGamexAuthentication(builder.Configuration, builder.Environment);
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 
@@ -20,8 +22,12 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
+app.UseAuthentication();
+app.UseAuthorization();
+
 app.MapHealthChecks("/health");
 app.MapGameEndpoints();
+app.MapAdminEndpoints();
 
 if (app.Configuration.GetValue("DB_MIGRATE_ON_STARTUP", app.Environment.IsDevelopment()))
 {

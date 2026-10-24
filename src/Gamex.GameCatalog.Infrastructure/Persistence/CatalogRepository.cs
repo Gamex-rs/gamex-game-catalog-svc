@@ -15,6 +15,12 @@ internal sealed class CatalogRepository(CatalogDbContext db) : ICatalogRepositor
     public Task<List<Genre>> GetGenresBySlugAsync(IReadOnlyCollection<string> slugs, CancellationToken cancellationToken) =>
         db.Genres.Where(g => slugs.Contains(g.Slug)).ToListAsync(cancellationToken);
 
+    public Task<List<Platform>> GetPlatformsByIdAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken) =>
+        db.Platforms.Where(p => ids.Contains(p.Id)).ToListAsync(cancellationToken);
+
+    public Task<List<Genre>> GetGenresByIdAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken) =>
+        db.Genres.Where(g => ids.Contains(g.Id)).ToListAsync(cancellationToken);
+
     public Task<List<Game>> GetGamesByRawgIdAsync(IReadOnlyCollection<int> rawgIds, CancellationToken cancellationToken) =>
         db.Games
             .Include(g => g.Platforms)

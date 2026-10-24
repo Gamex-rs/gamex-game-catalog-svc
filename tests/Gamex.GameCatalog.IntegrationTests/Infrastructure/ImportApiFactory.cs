@@ -72,10 +72,11 @@ public sealed class ImportApiFactory : ApiFactoryBase
     }
 }
 
-/// <summary>Search results keyed by term; terms in <see cref="FailingTerms"/> throw.</summary>
+/// <summary>Search results keyed by term and details keyed by slug; keys in <see cref="FailingTerms"/> throw.</summary>
 public sealed class FakeRawg : IRawgClient
 {
     public ConcurrentDictionary<string, IReadOnlyList<RawgGame>> Results { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public ConcurrentDictionary<string, RawgGame> Details { get; } = new(StringComparer.OrdinalIgnoreCase);
     public ConcurrentDictionary<string, bool> FailingTerms { get; } = new(StringComparer.OrdinalIgnoreCase);
     public ConcurrentQueue<string> Searches { get; } = new();
 
@@ -93,7 +94,9 @@ public sealed class FakeRawg : IRawgClient
     }
 
     public Task<RawgGame?> GetGameAsync(string idOrSlug, CancellationToken cancellationToken) =>
-        Task.FromResult(Results.Values.SelectMany(r => r).FirstOrDefault(g => g.Slug == idOrSlug));
+        FailingTerms.ContainsKey(idOrSlug)
+            ? throw new RawgUnavailableException("RAWG is down")
+            : Task.FromResult(Details.GetValueOrDefault(idOrSlug));
 }
 
 public sealed class RecordingPublisher : ICatalogEventPublisher

@@ -10,6 +10,8 @@ public static class DependencyInjection
         services.AddScoped<IGameImporter, GameImporter>();
         services.AddScoped<IGameSearchService, GameSearchService>();
         services.AddScoped<ICoverImageAttacher, CoverImageAttacher>();
+        services.AddScoped<IGameAdminService, GameAdminService>();
+        services.AddScoped<ICatalogReplayService, CatalogReplayService>();
         return services;
     }
 }

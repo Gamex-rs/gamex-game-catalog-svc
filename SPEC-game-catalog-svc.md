@@ -80,6 +80,36 @@ All responses are JSON. Authentication is **not required** for read endpoints. A
 }
 ```
 
+#### Admin authentication
+
+Admin endpoints require a JWT issued by the User Library Service: RS256, validated with `JWT_PUBLIC_KEY`, with claim `role` = `admin`. No token or an invalid/expired token → `401`; a valid token without the admin role → `403`. Issuer and audience are validated only when `JWT_ISSUER` / `JWT_AUDIENCE` are configured. Outside Development the service refuses to start without `JWT_PUBLIC_KEY`.
+
+#### `POST /games/sync` — Request
+
+```json
+{ "rawgSlug": "elden-ring" }
+```
+
+A numeric RAWG id is also accepted. Fetches the full RAWG detail (including description) and creates or updates the game. Returns `200` with the game detail; `404` if RAWG has no such game; `502` if RAWG fails; `503` if `RAWG_API_KEY` is not configured.
+
+#### `PUT /games/{id}` — Request
+
+Full replacement of the editable fields; platforms and genres are replaced by the given sets.
+
+```json
+{
+  "title": "Elden Ring",
+  "description": "string",
+  "coverImageUrl": "https://media.gamex.rs/...",
+  "releaseDate": "2022-02-25",
+  "metacritic": 96,
+  "platformIds": ["uuid"],
+  "genreIds": ["uuid"]
+}
+```
+
+`title` is required (max 255); `metacritic` 0–100; `coverImageUrl` must be an absolute https URL. Unknown platform/genre ids → `400`. Returns `200` with the game detail. Manual edits to a RAWG-backed game are overwritten by the next RAWG sync or nightly refresh of that game.
+
 ### 3.2 Platforms
 
 | Method | Path | Auth | Description |
@@ -96,7 +126,7 @@ All responses are JSON. Authentication is **not required** for read endpoints. A
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| `POST` | `/admin/catalog-events/replay` | Admin | Republish `catalog.platform.upserted` for all platforms, then `catalog.game.upserted` for all games (or only `?gameIds=uuid1,uuid2`). Used for the initial fill of consumer replicas and for recovery after DLQ incidents. Runs as a background job; returns `202 Accepted`. |
+| `POST` | `/admin/catalog-events/replay` | Admin | Republish `catalog.platform.upserted` for all platforms, then `catalog.game.upserted` for all games (or only `?gameIds=uuid1,uuid2`). Used for the initial fill of consumer replicas and for recovery after DLQ incidents. Runs as a background job; returns `202 Accepted` with `{ "jobId": "uuid" }` (`429` if 10 replays are already queued). |
 
 ---
 
@@ -372,5 +402,7 @@ Docker image tag: `{ECR_REPO}/gamex-game-catalog-svc:{git-sha}`
 | `RAWG_BASE_URL` | Optional; defaults to `https://api.rawg.io/api/` | — |
 | `AWS_SERVICE_URL` | Local only: LocalStack endpoint for S3/SQS | — |
 | `DB_MIGRATE_ON_STARTUP` | Apply EF Core migrations at startup (default: true in Development) | ECS task definition |
-| `JWT_PUBLIC_KEY` | RS256 public key for JWT validation | SSM Parameter Store |
+| `JWT_PUBLIC_KEY` | RS256 public key for JWT validation (PEM; `\n` escapes allowed) | SSM Parameter Store |
+| `JWT_ISSUER` | Optional; expected `iss` claim | SSM Parameter Store |
+| `JWT_AUDIENCE` | Optional; expected `aud` claim | SSM Parameter Store |
 | `ASPNETCORE_ENVIRONMENT` | `Development` / `Production` | ECS task definition |

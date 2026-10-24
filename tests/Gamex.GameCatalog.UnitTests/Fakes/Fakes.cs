@@ -23,6 +23,12 @@ internal sealed class FakeCatalogRepository : ICatalogRepository
     public Task<List<Genre>> GetGenresBySlugAsync(IReadOnlyCollection<string> slugs, CancellationToken cancellationToken) =>
         Task.FromResult(Genres.Where(g => slugs.Contains(g.Slug)).ToList());
 
+    public Task<List<Platform>> GetPlatformsByIdAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken) =>
+        Task.FromResult(Platforms.Where(p => ids.Contains(p.Id)).ToList());
+
+    public Task<List<Genre>> GetGenresByIdAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken) =>
+        Task.FromResult(Genres.Where(g => ids.Contains(g.Id)).ToList());
+
     public Task<List<Game>> GetGamesByRawgIdAsync(IReadOnlyCollection<int> rawgIds, CancellationToken cancellationToken) =>
         Task.FromResult(Games.Where(g => g.RawgId is { } id && rawgIds.Contains(id)).ToList());
 
@@ -48,6 +54,26 @@ internal sealed class FakeCatalogRepository : ICatalogRepository
     }
 
     public void Reset() => ResetCount++;
+}
+
+internal sealed class FakeCatalogReadRepository(FakeCatalogRepository source) : ICatalogReadRepository
+{
+    public List<(int Skip, int Take)> BatchRequests { get; } = [];
+
+    public Task<List<Platform>> GetAllPlatformsAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(source.Platforms.ToList());
+
+    public Task<List<Platform>> GetPlatformsOfGamesAsync(IReadOnlyCollection<Guid> gameIds, CancellationToken cancellationToken) =>
+        Task.FromResult(source.Games.Where(g => gameIds.Contains(g.Id)).SelectMany(g => g.Platforms).Distinct().ToList());
+
+    public Task<List<Game>> GetGamesBatchAsync(int skip, int take, CancellationToken cancellationToken)
+    {
+        BatchRequests.Add((skip, take));
+        return Task.FromResult(source.Games.OrderBy(g => g.Id).Skip(skip).Take(take).ToList());
+    }
+
+    public Task<List<Game>> GetGamesByIdAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken) =>
+        Task.FromResult(source.Games.Where(g => ids.Contains(g.Id)).ToList());
 }
 
 internal sealed class RecordingEventPublisher : ICatalogEventPublisher
@@ -82,6 +108,8 @@ internal sealed class FakeRawgClient : IRawgClient
 {
     public bool IsEnabled { get; set; } = true;
     public List<RawgGame> SearchResults { get; } = [];
+
+    /// <summary>When set, every call throws <see cref="RawgUnavailableException"/>.</summary>
     public bool Fail { get; set; }
     public List<string> Searches { get; } = [];
 
@@ -94,7 +122,9 @@ internal sealed class FakeRawgClient : IRawgClient
     }
 
     public Task<RawgGame?> GetGameAsync(string idOrSlug, CancellationToken cancellationToken) =>
-        Task.FromResult(SearchResults.FirstOrDefault(g => g.Slug == idOrSlug || g.Id.ToString(System.Globalization.CultureInfo.InvariantCulture) == idOrSlug));
+        Fail
+            ? throw new RawgUnavailableException("down")
+            : Task.FromResult(SearchResults.FirstOrDefault(g => g.Slug == idOrSlug || g.Id.ToString(System.Globalization.CultureInfo.InvariantCulture) == idOrSlug));
 }
 
 internal sealed class FakeGameQueries : IGameQueries
@@ -123,7 +153,7 @@ internal sealed class RecordingImporter : IGameImporter
     public Task<IReadOnlyList<Guid>> ImportAsync(IReadOnlyList<RawgGame> rawgGames, CancellationToken cancellationToken)
     {
         Imports.Add(rawgGames);
-        return Task.FromResult<IReadOnlyList<Guid>>([]);
+        return Task.FromResult<IReadOnlyList<Guid>>(rawgGames.Select(_ => Guid.NewGuid()).ToList());
     }
 }
 
