@@ -192,6 +192,26 @@ namespace Gamex.GameCatalog.Infrastructure.Persistence.Migrations
                     b.ToTable("platforms", (string)null);
                 });
 
+            modelBuilder.Entity("Gamex.GameCatalog.Infrastructure.Persistence.ProcessedLibraryEvent", b =>
+                {
+                    b.Property<string>("MessageId")
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)")
+                        .HasColumnName("message_id");
+
+                    b.Property<DateTime>("ProcessedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("processed_at");
+
+                    b.HasKey("MessageId")
+                        .HasName("pk_processed_library_events");
+
+                    b.HasIndex("ProcessedAt")
+                        .HasDatabaseName("ix_processed_library_events_processed_at");
+
+                    b.ToTable("processed_library_events", (string)null);
+                });
+
             modelBuilder.Entity("game_genres", b =>
                 {
                     b.Property<Guid>("GameId")

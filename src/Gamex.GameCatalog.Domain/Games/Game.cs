@@ -44,7 +44,7 @@ public sealed class Game
         var game = new Game
         {
             Id = Guid.CreateVersion7(),
-            CreatedAt = now,
+            CreatedAt = Timestamps.ToStoragePrecision(now),
         };
         game.Stats = GameStats.CreateFor(game.Id, now);
         game.Apply(metadata, platforms, genres, now);
@@ -70,7 +70,7 @@ public sealed class Game
         var replicated = CoverImageUrl != coverImageUrl;
         CoverImageUrl = coverImageUrl;
         CoverSourceUrl = sourceUrl;
-        UpdatedAt = now;
+        UpdatedAt = Timestamps.ToStoragePrecision(now);
         return replicated ? GameChange.Replicated : GameChange.Internal;
     }
 
@@ -112,7 +112,7 @@ public sealed class Game
         Metacritic = metadata.Metacritic;
         Replace(_platforms, newPlatforms);
         Replace(_genres, newGenres);
-        UpdatedAt = now;
+        UpdatedAt = Timestamps.ToStoragePrecision(now);
 
         return replicatedChanged ? GameChange.Replicated : GameChange.Internal;
     }

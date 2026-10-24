@@ -9,6 +9,7 @@ public sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> options)
     public DbSet<Platform> Platforms => Set<Platform>();
     public DbSet<Genre> Genres => Set<Genre>();
     public DbSet<GameStats> GameStats => Set<GameStats>();
+    internal DbSet<ProcessedLibraryEvent> ProcessedLibraryEvents => Set<ProcessedLibraryEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

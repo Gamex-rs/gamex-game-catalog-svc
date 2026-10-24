@@ -195,6 +195,15 @@ One row per game. Updated by the SQS consumer.
 
 A row in `game_stats` is created automatically (via DB trigger or application logic) when a new row is inserted into `games`.
 
+### `processed_library_events`
+
+SQS message ids already applied to `game_stats` (idempotent consumer, see §6.2).
+
+| Column | Type | Notes |
+|---|---|---|
+| `message_id` | VARCHAR(100) PK | SQS `MessageId` |
+| `processed_at` | DATETIME(6) | Indexed; rows older than 14 days are deleted by the nightly job (SQS retains messages at most 14 days) |
+
 ---
 
 ## 5. RAWG Integration
@@ -258,7 +267,7 @@ Consumed by the User Library Service to maintain its read-only replica (`catalog
 }
 ```
 
-- `updatedAt` is `games.updated_at` / `platforms.updated_at` and acts as a version: consumers ignore events older than what they already stored.
+- `updatedAt` is `games.updated_at` / `platforms.updated_at` with exactly microsecond precision (`2026-10-24T10:00:00.123456Z`, matching `DATETIME(6)`) and acts as a version: consumers ignore events older than what they already stored. Timestamps are truncated to microseconds before saving, so a published event and a later replay of the same row carry the identical value.
 - Only replicated fields are included. Description, genres and stats are **not** replicated — consumers that need them call the public API from the frontend.
 - Delivery is at-least-once; duplicates are safe because consumers upsert by version.
 - If publishing fails after the DB write, the game will be republished on its next change, by the nightly job, or by `POST /admin/catalog-events/replay`. (A transactional outbox can be added later if needed.)
@@ -291,21 +300,35 @@ A user can hold the same game on several platforms / formats (separate library e
 
 ### Consumer Behaviour
 
+Each message is applied in one transaction:
+
 ```sql
+INSERT INTO processed_library_events (message_id, processed_at) VALUES (:sqsMessageId, UTC_TIMESTAMP(6));
+-- duplicate key → message already applied: roll back and delete the message
+
 UPDATE game_stats
 SET
-  owned_count      = GREATEST(0, owned_count      + :delta_owned),
-  wishlist_count   = GREATEST(0, wishlist_count   + :delta_wishlist),
-  for_exchange_count = GREATEST(0, for_exchange_count + :delta_forExchange),
-  for_sale_count   = GREATEST(0, for_sale_count   + :delta_forSale),
-  want_to_buy_count = GREATEST(0, want_to_buy_count + :delta_wantToBuy),
-  updated_at       = NOW()
+  owned_count        = GREATEST(0, CAST(owned_count AS SIGNED)        + :delta_owned),
+  wishlist_count     = GREATEST(0, CAST(wishlist_count AS SIGNED)     + :delta_wishlist),
+  for_exchange_count = GREATEST(0, CAST(for_exchange_count AS SIGNED) + :delta_forExchange),
+  for_sale_count     = GREATEST(0, CAST(for_sale_count AS SIGNED)     + :delta_forSale),
+  want_to_buy_count  = GREATEST(0, CAST(want_to_buy_count AS SIGNED)  + :delta_wantToBuy),
+  updated_at         = UTC_TIMESTAMP()
 WHERE game_id = :gameId;
+-- 0 rows → game unknown: roll back (see below)
 ```
 
-`GREATEST(0, ...)` guards against counts going negative due to out-of-order or duplicate messages.
+- `processed_library_events` makes the consumer idempotent: SQS delivers at least once, and a redelivered message must not be counted twice.
+- The `CAST(... AS SIGNED)` is required: the counts are `INT UNSIGNED`, and `0 + (-1)` would fail with "out of range" before `GREATEST` runs.
+- `GREATEST(0, ...)` guards against counts going negative when a removal arrives before its add (standard SQS queues do not guarantee order).
+- Each delta value must be -1, 0 or +1; an all-zero delta is deleted without a database write.
 
-If the `game_id` does not exist locally (race condition during first sync), the event is requeued once; if it fails again it is sent to a Dead Letter Queue (`gamex-library-events-dlq`) for manual inspection.
+Failure handling (queue redrive policy: `maxReceiveCount` 3, see IaC spec):
+- **Game not found** (race during first import): the message is hidden for `SQS_RETRY_DELAY_SECONDS` (default 30) and redelivered; after 3 receives SQS moves it to `gamex-library-events-dlq` for manual inspection.
+- **Malformed message** (invalid JSON, wrong `eventType`, delta outside -1..1): logged and left on the queue, so it reaches the DLQ after 3 receives.
+- **Database unavailable**: the message is not deleted and is retried after its visibility timeout.
+
+Publishing to `gamex-catalog-events` uses `SendMessageBatch` (10 per call) with an `eventType` message attribute. Platform events are sent before the game events that reference them, but standard SQS queues do not guarantee order — consumers must handle a game whose platform has not arrived yet (the User Library spec redelivers such messages).
 
 ---
 
@@ -402,6 +425,7 @@ Docker image tag: `{ECR_REPO}/gamex-game-catalog-svc:{git-sha}`
 | `RAWG_BASE_URL` | Optional; defaults to `https://api.rawg.io/api/` | — |
 | `AWS_SERVICE_URL` | Local only: LocalStack endpoint for S3/SQS | — |
 | `DB_MIGRATE_ON_STARTUP` | Apply EF Core migrations at startup (default: true in Development) | ECS task definition |
+| `SQS_RETRY_DELAY_SECONDS` | Delay before a library event for an unknown game is redelivered (default 30) | ECS task definition |
 | `JWT_PUBLIC_KEY` | RS256 public key for JWT validation (PEM; `\n` escapes allowed) | SSM Parameter Store |
 | `JWT_ISSUER` | Optional; expected `iss` claim | SSM Parameter Store |
 | `JWT_AUDIENCE` | Optional; expected `aud` claim | SSM Parameter Store |

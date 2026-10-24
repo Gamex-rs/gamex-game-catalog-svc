@@ -1,12 +1,18 @@
 #!/bin/bash
 set -euo pipefail
 
-awslocal sqs create-queue --queue-name gamex-library-events-dlq
-awslocal sqs create-queue --queue-name gamex-library-events \
-  --attributes '{"RedrivePolicy":"{\"deadLetterTargetArn\":\"arn:aws:sqs:us-east-1:000000000000:gamex-library-events-dlq\",\"maxReceiveCount\":\"3\"}"}'
+# Same region the service signs requests for (AWS_DEFAULT_REGION in docker-compose.yml).
+REGION=eu-central-1
+ACCOUNT=000000000000
 
-awslocal sqs create-queue --queue-name gamex-catalog-events-dlq
-awslocal sqs create-queue --queue-name gamex-catalog-events \
-  --attributes '{"RedrivePolicy":"{\"deadLetterTargetArn\":\"arn:aws:sqs:us-east-1:000000000000:gamex-catalog-events-dlq\",\"maxReceiveCount\":\"3\"}"}'
+create_queue_with_dlq() {
+  local name=$1
+  awslocal --region "$REGION" sqs create-queue --queue-name "$name-dlq"
+  awslocal --region "$REGION" sqs create-queue --queue-name "$name" \
+    --attributes "{\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"arn:aws:sqs:$REGION:$ACCOUNT:$name-dlq\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}"
+}
 
-awslocal s3 mb s3://gamex-media
+create_queue_with_dlq gamex-library-events
+create_queue_with_dlq gamex-catalog-events
+
+awslocal --region "$REGION" s3 mb s3://gamex-media

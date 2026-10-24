@@ -22,7 +22,7 @@ public sealed class Platform
         Id = Guid.CreateVersion7(),
         Name = name,
         Slug = slug,
-        UpdatedAt = now,
+        UpdatedAt = Timestamps.ToStoragePrecision(now),
     };
 
     /// <returns><c>true</c> if the name changed.</returns>
@@ -34,7 +34,7 @@ public sealed class Platform
         }
 
         Name = name;
-        UpdatedAt = now;
+        UpdatedAt = Timestamps.ToStoragePrecision(now);
         return true;
     }
 }

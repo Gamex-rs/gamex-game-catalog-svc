@@ -1,11 +1,14 @@
 using Amazon;
 using Amazon.Runtime;
 using Amazon.S3;
+using Amazon.SQS;
 using Gamex.GameCatalog.Application.Abstractions;
 using Gamex.GameCatalog.Application.Games;
 using Gamex.GameCatalog.Application.Rawg;
+using Gamex.GameCatalog.Application.Stats;
 using Gamex.GameCatalog.Infrastructure.Covers;
 using Gamex.GameCatalog.Infrastructure.Events;
+using Gamex.GameCatalog.Infrastructure.Messaging;
 using Gamex.GameCatalog.Infrastructure.Persistence;
 using Gamex.GameCatalog.Infrastructure.Persistence.Queries;
 using Gamex.GameCatalog.Infrastructure.Rawg;
@@ -31,7 +34,9 @@ public static class DependencyInjection
 
         services.AddScoped<ICatalogReadRepository, CatalogReadRepository>();
 
-        services.AddSingleton<ICatalogEventPublisher, LoggingCatalogEventPublisher>();
+        services.AddScoped<IGameStatsStore, GameStatsStore>();
+
+        services.AddMessaging(configuration);
         services.AddSingleton<ReplayJobQueue>();
         services.AddSingleton<IReplayJobQueue>(sp => sp.GetRequiredService<ReplayJobQueue>());
         services.AddHostedService<ReplayWorker>();
@@ -78,7 +83,7 @@ public static class DependencyInjection
         }
 
         services.AddSingleton(options);
-        services.AddSingleton<IAmazonS3>(_ => CreateS3Client(configuration));
+        services.AddSingleton<IAmazonS3>(_ => CreateAwsClient(configuration, (credentials, config) => credentials is null ? new AmazonS3Client(config) : new AmazonS3Client(credentials, config), new AmazonS3Config()));
         services.AddHttpClient(S3CoverImageStore.SourceHttpClient, http => http.Timeout = TimeSpan.FromSeconds(30))
             .AddStandardResilienceHandler();
         services.AddSingleton<S3CoverImageStore>();
@@ -87,21 +92,69 @@ public static class DependencyInjection
         services.AddHostedService<CoverImageWorker>();
     }
 
-    private static AmazonS3Client CreateS3Client(IConfiguration configuration)
+    private static void AddMessaging(this IServiceCollection services, IConfiguration configuration)
     {
-        var config = new AmazonS3Config
+        var options = new MessagingOptions
         {
-            RegionEndpoint = RegionEndpoint.GetBySystemName(configuration["AWS_DEFAULT_REGION"] ?? "eu-central-1"),
+            CatalogEventsQueueUrl = configuration["SQS_CATALOG_EVENTS_URL"],
+            LibraryEventsQueueUrl = configuration["SQS_LIBRARY_EVENTS_URL"],
         };
+        if (int.TryParse(configuration["SQS_RETRY_DELAY_SECONDS"], out var retryDelay))
+        {
+            options.RetryDelaySeconds = retryDelay;
+        }
 
-        // Local development and tests point at LocalStack, which accepts any credentials.
+        services.AddSingleton(options);
+
+        if (string.IsNullOrWhiteSpace(options.CatalogEventsQueueUrl) && string.IsNullOrWhiteSpace(options.LibraryEventsQueueUrl))
+        {
+            services.AddSingleton<ICatalogEventPublisher, LoggingCatalogEventPublisher>();
+            return;
+        }
+
+        services.AddSingleton<IAmazonSQS>(_ => CreateAwsClient(
+            configuration,
+            (credentials, config) => credentials is null ? new AmazonSQSClient(config) : new AmazonSQSClient(credentials, config),
+            new AmazonSQSConfig()));
+
+        if (string.IsNullOrWhiteSpace(options.CatalogEventsQueueUrl))
+        {
+            services.AddSingleton<ICatalogEventPublisher, LoggingCatalogEventPublisher>();
+        }
+        else
+        {
+            services.AddSingleton<ICatalogEventPublisher, SqsCatalogEventPublisher>();
+        }
+
+        if (!string.IsNullOrWhiteSpace(options.LibraryEventsQueueUrl))
+        {
+            services.AddHostedService<LibraryEventsConsumer>();
+        }
+    }
+
+    /// <summary>
+    /// Real AWS uses the default credential chain (ECS task role). Local development and tests set <c>AWS_SERVICE_URL</c>
+    /// to LocalStack, which accepts any credentials.
+    /// </summary>
+    private static TClient CreateAwsClient<TClient, TConfig>(
+        IConfiguration configuration,
+        Func<AWSCredentials?, TConfig, TClient> create,
+        TConfig config)
+        where TConfig : ClientConfig
+    {
+        config.RegionEndpoint = RegionEndpoint.GetBySystemName(configuration["AWS_DEFAULT_REGION"] ?? "eu-central-1");
+
         if (configuration["AWS_SERVICE_URL"] is { Length: > 0 } serviceUrl)
         {
             config.ServiceURL = serviceUrl;
-            config.ForcePathStyle = true;
-            return new AmazonS3Client(new BasicAWSCredentials("test", "test"), config);
+            if (config is AmazonS3Config s3)
+            {
+                s3.ForcePathStyle = true;
+            }
+
+            return create(new BasicAWSCredentials("test", "test"), config);
         }
 
-        return new AmazonS3Client(config);
+        return create(null, config);
     }
 }

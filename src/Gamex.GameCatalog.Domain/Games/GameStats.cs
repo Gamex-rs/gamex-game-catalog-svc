@@ -18,6 +18,6 @@ public sealed class GameStats
     internal static GameStats CreateFor(Guid gameId, DateTime now) => new()
     {
         GameId = gameId,
-        UpdatedAt = now,
+        UpdatedAt = Timestamps.ToStoragePrecision(now),
     };
 }
