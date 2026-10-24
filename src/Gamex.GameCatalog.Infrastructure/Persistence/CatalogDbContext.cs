@@ -22,5 +22,8 @@ public sealed class CatalogDbContext(DbContextOptions<CatalogDbContext> options)
         configurationBuilder.Properties<DateTime>()
             .HaveColumnType("datetime(6)")
             .HaveConversion<UtcDateTimeConverter>();
+        configurationBuilder.Properties<DateOnly>()
+            .HaveColumnType("date")
+            .HaveConversion<DateOnlyConverter>();
     }
 }

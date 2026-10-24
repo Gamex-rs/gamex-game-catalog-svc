@@ -1,3 +1,4 @@
+using Gamex.GameCatalog.Api.Endpoints;
 using Gamex.GameCatalog.Infrastructure;
 using Gamex.GameCatalog.Infrastructure.Persistence;
 
@@ -18,6 +19,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.MapHealthChecks("/health");
+app.MapGameEndpoints();
 
 if (app.Configuration.GetValue("DB_MIGRATE_ON_STARTUP", app.Environment.IsDevelopment()))
 {

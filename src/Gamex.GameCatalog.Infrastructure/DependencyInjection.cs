@@ -1,4 +1,6 @@
+using Gamex.GameCatalog.Application.Games;
 using Gamex.GameCatalog.Infrastructure.Persistence;
+using Gamex.GameCatalog.Infrastructure.Persistence.Queries;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,6 +15,7 @@ public static class DependencyInjection
             ?? throw new InvalidOperationException("DB_CONNECTION_STRING is not configured.");
 
         services.AddDbContext<CatalogDbContext>(options => options.UseMySQL(connectionString));
+        services.AddScoped<IGameQueries, GameQueries>();
         services.AddSingleton(TimeProvider.System);
         services.AddHealthChecks().AddDbContextCheck<CatalogDbContext>("database");
 
