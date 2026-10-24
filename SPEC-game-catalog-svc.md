@@ -10,6 +10,8 @@
 
 The Game Catalog Service is the single source of truth for game metadata within Gamex. It owns the integration with the external RAWG API, caches all game data locally, and maintains aggregate statistics per game (how many users own it, have it on their wishlist, etc.). It exposes a read-heavy REST API consumed primarily by the frontend.
 
+It also publishes `catalog.*` events to the `gamex-catalog-events` queue whenever game or platform data changes, so other services (currently the User Library Service) can keep a read-only local replica of the fields they need without calling this service synchronously.
+
 ---
 
 ## 2. Tech Stack
@@ -21,6 +23,7 @@ The Game Catalog Service is the single source of truth for game metadata within 
 | ORM | Entity Framework Core 8 |
 | Database | MySQL 8 (Aurora MySQL Serverless v2 on AWS, official Docker image locally) |
 | SQS Consumer | AWSSDK.SQS + background `IHostedService` |
+| SQS Publisher | AWSSDK.SQS (catalog events) |
 | Image storage | AWS S3 (`gamex-media` bucket), served via Cloudflare CDN |
 | Config / Secrets | AWS SSM Parameter Store + Secrets Manager (env vars locally) |
 
@@ -89,6 +92,12 @@ All responses are JSON. Authentication is **not required** for read endpoints. A
 |---|---|---|---|
 | `GET` | `/genres` | None | List all genres |
 
+### 3.4 Admin — Catalog Events
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `POST` | `/admin/catalog-events/replay` | Admin | Republish `catalog.platform.upserted` for all platforms, then `catalog.game.upserted` for all games (or only `?gameIds=uuid1,uuid2`). Used for the initial fill of consumer replicas and for recovery after DLQ incidents. Runs as a background job; returns `202 Accepted`. |
+
 ---
 
 ## 4. Data Model
@@ -106,7 +115,7 @@ All responses are JSON. Authentication is **not required** for read endpoints. A
 | `release_date` | DATE | |
 | `metacritic` | SMALLINT | |
 | `created_at` | DATETIME | |
-| `updated_at` | DATETIME | |
+| `updated_at` | DATETIME(6) | Bumped on any change to the game or its platforms; used as the version in `catalog.game.upserted` |
 
 ### `platforms`
 
@@ -115,6 +124,7 @@ All responses are JSON. Authentication is **not required** for read endpoints. A
 | `id` | CHAR(36) PK | |
 | `name` | VARCHAR(100) | e.g. `PlayStation 5` |
 | `slug` | VARCHAR(100) | e.g. `playstation5` |
+| `updated_at` | DATETIME(6) | Used as the version in `catalog.platform.upserted` |
 
 ### `genres`
 
@@ -173,13 +183,55 @@ When a game is synced from RAWG:
 
 Cover images are never fetched from RAWG at request time — only during sync.
 
+### Publishing after sync
+
+Every sync path (search fallback, admin sync, admin `PUT /games/{id}`, nightly refresh) publishes a `catalog.game.upserted` event after the game is persisted — but only when replicated fields actually changed (title, cover, release date, metacritic, platforms) or the game is new. A newly discovered platform publishes `catalog.platform.upserted` **before** any game event that references it. See §6.
+
 ### RAWG API Key
 
 Stored in AWS Secrets Manager as `gx/{env}/rawg-api-key`. Loaded at service startup. Locally provided via `.env`.
 
 ---
 
-## 6. SQS Event Consumer
+## 6. SQS Events
+
+### 6.1 Published: `gamex-catalog-events`
+
+Consumed by the User Library Service to maintain its read-only replica (`catalog_games`, `catalog_platforms`, `catalog_game_platforms`). Events carry the **full current state** of the replicated fields (not a diff), so consumers can upsert without reading anything else.
+
+**Event: `catalog.platform.upserted`**
+
+```json
+{
+  "eventType": "catalog.platform.upserted",
+  "platformId": "uuid",
+  "name": "PlayStation 5",
+  "slug": "playstation5",
+  "updatedAt": "2026-10-24T10:00:00.123456Z"
+}
+```
+
+**Event: `catalog.game.upserted`**
+
+```json
+{
+  "eventType": "catalog.game.upserted",
+  "gameId": "uuid",
+  "title": "Elden Ring",
+  "coverImageUrl": "https://media.gamex.rs/game-covers/326243.jpg",
+  "releaseDate": "2022-02-25",
+  "metacritic": 96,
+  "platformIds": ["uuid", "uuid"],
+  "updatedAt": "2026-10-24T10:00:00.123456Z"
+}
+```
+
+- `updatedAt` is `games.updated_at` / `platforms.updated_at` and acts as a version: consumers ignore events older than what they already stored.
+- Only replicated fields are included. Description, genres and stats are **not** replicated — consumers that need them call the public API from the frontend.
+- Delivery is at-least-once; duplicates are safe because consumers upsert by version.
+- If publishing fails after the DB write, the game will be republished on its next change, by the nightly job, or by `POST /admin/catalog-events/replay`. (A transactional outbox can be added later if needed.)
+
+### 6.2 Consumed: `gamex-library-events`
 
 The service consumes the `gamex-library-events` queue published by the User Library Service.
 
@@ -202,6 +254,8 @@ The service consumes the `gamex-library-events` queue published by the User Libr
 ```
 
 `delta` values are `+1` (status added) or `-1` (status removed). Multiple statuses can change in one event (e.g., a game moved from `forExchange` to `forSale` sends `forExchange: -1, forSale: +1`).
+
+A user can hold the same game on several platforms / formats (separate library entries). The User Library Service computes deltas on the per-user aggregate for the game, so all counts in `game_stats` are **number of users**, not number of copies — a user who owns a game on both PS5 and PC counts once in `owned_count`. A user can count in both `owned_count` and `wishlist_count` at the same time. No change to this consumer is needed.
 
 ### Consumer Behaviour
 
@@ -256,6 +310,7 @@ services:
       - DB_CONNECTION_STRING=Server=catalog-db;Database=games_db;User=root;Password=localdev;
       - RAWG_API_KEY=${RAWG_API_KEY}
       - SQS_LIBRARY_EVENTS_URL=http://localstack:4566/000000000000/gamex-library-events
+      - SQS_CATALOG_EVENTS_URL=http://localstack:4566/000000000000/gamex-catalog-events
       - AWS_DEFAULT_REGION=eu-central-1
     depends_on:
       - catalog-db
@@ -307,7 +362,8 @@ Docker image tag: `{ECR_REPO}/gamex-game-catalog-svc:{git-sha}`
 |---|---|---|
 | `DB_CONNECTION_STRING` | MySQL connection string | Secrets Manager |
 | `RAWG_API_KEY` | RAWG API key | Secrets Manager |
-| `SQS_LIBRARY_EVENTS_URL` | SQS queue URL | SSM Parameter Store |
+| `SQS_LIBRARY_EVENTS_URL` | SQS queue URL (consumed) | SSM Parameter Store |
+| `SQS_CATALOG_EVENTS_URL` | SQS queue URL (published) | SSM Parameter Store |
 | `S3_MEDIA_BUCKET` | S3 bucket name for cover images | SSM Parameter Store |
 | `CLOUDFLARE_MEDIA_BASE_URL` | Cloudflare media base URL | SSM Parameter Store |
 | `JWT_PUBLIC_KEY` | RS256 public key for JWT validation | SSM Parameter Store |
