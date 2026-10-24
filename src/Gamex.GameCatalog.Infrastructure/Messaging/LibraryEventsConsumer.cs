@@ -97,7 +97,8 @@ internal sealed partial class LibraryEventsConsumer(
         LibraryStatusChangedMessage? message;
         try
         {
-            message = JsonSerializer.Deserialize<LibraryStatusChangedMessage>(body, JsonOptions);
+            // Tools (e.g. PowerShell pipes) may prepend a UTF-8 BOM, which System.Text.Json rejects.
+            message = JsonSerializer.Deserialize<LibraryStatusChangedMessage>(body.TrimStart('﻿'), JsonOptions);
         }
         catch (JsonException)
         {

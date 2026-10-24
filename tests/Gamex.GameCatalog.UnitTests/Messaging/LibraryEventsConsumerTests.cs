@@ -22,6 +22,12 @@ public sealed class LibraryEventsConsumerTests
     }
 
     [Fact]
+    public void Parse_LeadingByteOrderMark_IsIgnored()
+    {
+        LibraryEventsConsumer.Parse("﻿" + Message()).ShouldNotBeNull();
+    }
+
+    [Fact]
     public void Parse_ZeroDelta_IsValidAndZero()
     {
         var parsed = LibraryEventsConsumer.Parse(Message(delta: """{"owned":0,"wishlist":0,"forExchange":0,"forSale":0,"wantToBuy":0}"""));
