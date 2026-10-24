@@ -1,4 +1,5 @@
 using Gamex.GameCatalog.Application.Games;
+using Gamex.GameCatalog.Application.Refresh;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Gamex.GameCatalog.Application;
@@ -12,6 +13,7 @@ public static class DependencyInjection
         services.AddScoped<ICoverImageAttacher, CoverImageAttacher>();
         services.AddScoped<IGameAdminService, GameAdminService>();
         services.AddScoped<ICatalogReplayService, CatalogReplayService>();
+        services.AddScoped<INightlyRefreshService, NightlyRefreshService>();
         return services;
     }
 }

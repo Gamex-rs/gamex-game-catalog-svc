@@ -29,6 +29,7 @@ public abstract class ApiFactoryBase : WebApplicationFactory<Program>, IAsyncLif
         builder.UseSetting("JWT_PUBLIC_KEY", SigningKey.ExportSubjectPublicKeyInfoPem());
         builder.UseSetting("RAWG_API_KEY", "");
         builder.UseSetting("S3_MEDIA_BUCKET", "");
+        builder.UseSetting("NIGHTLY_REFRESH_INTERVAL_MS", "0");
     }
 
     /// <summary>Signs a token like the User Library Service does (RS256, claims sub/email/name/role).</summary>

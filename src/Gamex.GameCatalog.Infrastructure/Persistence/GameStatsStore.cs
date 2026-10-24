@@ -48,4 +48,7 @@ internal sealed class GameStatsStore(CatalogDbContext db) : IGameStatsStore
         await transaction.CommitAsync(cancellationToken);
         return StatsUpdateOutcome.Applied;
     }
+
+    public Task<int> PurgeProcessedBeforeAsync(DateTime cutoff, CancellationToken cancellationToken) =>
+        db.ProcessedLibraryEvents.Where(e => e.ProcessedAt < cutoff).ExecuteDeleteAsync(cancellationToken);
 }

@@ -74,6 +74,22 @@ internal sealed class FakeCatalogReadRepository(FakeCatalogRepository source) : 
 
     public Task<List<Game>> GetGamesByIdAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken) =>
         Task.FromResult(source.Games.Where(g => ids.Contains(g.Id)).ToList());
+
+    public List<int> Candidates { get; } = [];
+    public List<int> CandidateRequests { get; } = [];
+    public List<int> Refreshed { get; } = [];
+
+    public Task<List<int>> GetRefreshCandidatesAsync(int take, CancellationToken cancellationToken)
+    {
+        CandidateRequests.Add(take);
+        return Task.FromResult(Candidates.Take(take).ToList());
+    }
+
+    public Task MarkRefreshedAsync(int rawgId, DateTime refreshedAt, CancellationToken cancellationToken)
+    {
+        Refreshed.Add(rawgId);
+        return Task.CompletedTask;
+    }
 }
 
 internal sealed class RecordingEventPublisher : ICatalogEventPublisher
@@ -111,6 +127,9 @@ internal sealed class FakeRawgClient : IRawgClient
 
     /// <summary>When set, every call throws <see cref="RawgUnavailableException"/>.</summary>
     public bool Fail { get; set; }
+
+    /// <summary>Detail lookups for these RAWG ids throw <see cref="RawgUnavailableException"/>.</summary>
+    public HashSet<int> FailingIds { get; } = [];
     public List<string> Searches { get; } = [];
 
     public Task<IReadOnlyList<RawgGame>> SearchAsync(string term, int pageSize, CancellationToken cancellationToken)
@@ -122,7 +141,7 @@ internal sealed class FakeRawgClient : IRawgClient
     }
 
     public Task<RawgGame?> GetGameAsync(string idOrSlug, CancellationToken cancellationToken) =>
-        Fail
+        Fail || (int.TryParse(idOrSlug, out var id) && FailingIds.Contains(id))
             ? throw new RawgUnavailableException("down")
             : Task.FromResult(SearchResults.FirstOrDefault(g => g.Slug == idOrSlug || g.Id.ToString(System.Globalization.CultureInfo.InvariantCulture) == idOrSlug));
 }

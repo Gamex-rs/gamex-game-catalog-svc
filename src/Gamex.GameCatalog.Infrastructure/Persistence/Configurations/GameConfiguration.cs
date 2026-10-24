@@ -24,6 +24,7 @@ internal sealed class GameConfiguration : IEntityTypeConfiguration<Game>
         builder.HasIndex(g => g.Title);
         builder.HasIndex(g => g.ReleaseDate);
         builder.HasIndex(g => g.Metacritic);
+        builder.HasIndex(g => g.RefreshedAt);
 
         builder.HasMany(g => g.Platforms)
             .WithMany()

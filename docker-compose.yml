@@ -7,6 +7,8 @@ services:
       - path: .env
         required: false
     environment:
+      # Development: migrations on startup, OpenAPI at /openapi/v1.json, JWT_PUBLIC_KEY optional (admin endpoints return 401 without it).
+      - ASPNETCORE_ENVIRONMENT=Development
       - DB_CONNECTION_STRING=Server=catalog-db;Database=games_db;User=root;Password=localdev;
       - SQS_LIBRARY_EVENTS_URL=http://localstack:4566/000000000000/gamex-library-events
       - SQS_CATALOG_EVENTS_URL=http://localstack:4566/000000000000/gamex-catalog-events

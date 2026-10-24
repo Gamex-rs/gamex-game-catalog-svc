@@ -30,12 +30,23 @@ public sealed class ImportApiFactory : ApiFactoryBase
     {
         await Task.WhenAll(base.InitializeAsync().AsTask(), _localStack.StartAsync());
         using var s3 = CreateS3Client();
-        await s3.PutBucketAsync(Bucket);
+        // Outside us-east-1 S3 requires an explicit location constraint.
+        await s3.PutBucketAsync(new Amazon.S3.Model.PutBucketRequest
+        {
+            BucketName = Bucket,
+            BucketRegion = Amazon.S3.S3Region.EUCentral1,
+        });
     }
 
     public AmazonS3Client CreateS3Client() => new(
         new BasicAWSCredentials("test", "test"),
-        new AmazonS3Config { ServiceURL = _localStack.GetConnectionString(), ForcePathStyle = true });
+        new AmazonS3Config
+        {
+            ServiceURL = _localStack.GetConnectionString(),
+            ForcePathStyle = true,
+            // Same signing region as the service, so both see the same LocalStack resources.
+            AuthenticationRegion = "eu-central-1",
+        });
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {

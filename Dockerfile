@@ -4,7 +4,8 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /source
 
 # Restore first so the layer is cached until a project or package version changes.
-COPY Directory.Build.props Directory.Packages.props ./
+# .editorconfig carries analyzer settings; without it warnings-as-errors fails the publish.
+COPY .editorconfig global.json Directory.Build.props Directory.Packages.props ./
 COPY src/Gamex.GameCatalog.Domain/*.csproj src/Gamex.GameCatalog.Domain/
 COPY src/Gamex.GameCatalog.Application/*.csproj src/Gamex.GameCatalog.Application/
 COPY src/Gamex.GameCatalog.Infrastructure/*.csproj src/Gamex.GameCatalog.Infrastructure/

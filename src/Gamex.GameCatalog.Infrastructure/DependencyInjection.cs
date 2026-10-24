@@ -1,3 +1,4 @@
+using System.Globalization;
 using Amazon;
 using Amazon.Runtime;
 using Amazon.S3;
@@ -5,9 +6,11 @@ using Amazon.SQS;
 using Gamex.GameCatalog.Application.Abstractions;
 using Gamex.GameCatalog.Application.Games;
 using Gamex.GameCatalog.Application.Rawg;
+using Gamex.GameCatalog.Application.Refresh;
 using Gamex.GameCatalog.Application.Stats;
 using Gamex.GameCatalog.Infrastructure.Covers;
 using Gamex.GameCatalog.Infrastructure.Events;
+using Gamex.GameCatalog.Infrastructure.Jobs;
 using Gamex.GameCatalog.Infrastructure.Messaging;
 using Gamex.GameCatalog.Infrastructure.Persistence;
 using Gamex.GameCatalog.Infrastructure.Persistence.Queries;
@@ -37,6 +40,7 @@ public static class DependencyInjection
         services.AddScoped<IGameStatsStore, GameStatsStore>();
 
         services.AddMessaging(configuration);
+        services.AddNightlyRefresh(configuration, connectionString);
         services.AddSingleton<ReplayJobQueue>();
         services.AddSingleton<IReplayJobQueue>(sp => sp.GetRequiredService<ReplayJobQueue>());
         services.AddHostedService<ReplayWorker>();
@@ -92,6 +96,34 @@ public static class DependencyInjection
         services.AddHostedService<CoverImageWorker>();
     }
 
+    private static void AddNightlyRefresh(this IServiceCollection services, IConfiguration configuration, string connectionString)
+    {
+        var options = new NightlyRefreshOptions();
+        if (int.TryParse(configuration["NIGHTLY_REFRESH_MAX_GAMES"], out var maxGames))
+        {
+            options.MaxGames = maxGames;
+        }
+
+        if (int.TryParse(configuration["NIGHTLY_REFRESH_INTERVAL_MS"], out var intervalMs))
+        {
+            options.RequestInterval = TimeSpan.FromMilliseconds(intervalMs);
+        }
+
+        services.AddSingleton(options);
+
+        if (!configuration.GetValue("NIGHTLY_REFRESH_ENABLED", true))
+        {
+            return;
+        }
+
+        var localTime = TimeOnly.ParseExact(configuration["NIGHTLY_REFRESH_TIME"] ?? "03:00", "HH:mm", CultureInfo.InvariantCulture);
+        var timeZone = TimeZoneInfo.FindSystemTimeZoneById(configuration["NIGHTLY_REFRESH_TIMEZONE"] ?? "Europe/Belgrade");
+
+        services.AddSingleton(new NightlySchedule(localTime, timeZone));
+        services.AddSingleton(new MySqlJobLock(connectionString));
+        services.AddHostedService<NightlyRefreshScheduler>();
+    }
+
     private static void AddMessaging(this IServiceCollection services, IConfiguration configuration)
     {
         var options = new MessagingOptions
@@ -142,11 +174,15 @@ public static class DependencyInjection
         TConfig config)
         where TConfig : ClientConfig
     {
-        config.RegionEndpoint = RegionEndpoint.GetBySystemName(configuration["AWS_DEFAULT_REGION"] ?? "eu-central-1");
+        var region = configuration["AWS_DEFAULT_REGION"] ?? "eu-central-1";
+        config.RegionEndpoint = RegionEndpoint.GetBySystemName(region);
 
         if (configuration["AWS_SERVICE_URL"] is { Length: > 0 } serviceUrl)
         {
             config.ServiceURL = serviceUrl;
+            // With a custom endpoint the SDK cannot infer the region from the host and signs as us-east-1;
+            // LocalStack scopes resources by signing region, so requests would miss queues created in our region.
+            config.AuthenticationRegion = region;
             if (config is AmazonS3Config s3)
             {
                 s3.ForcePathStyle = true;

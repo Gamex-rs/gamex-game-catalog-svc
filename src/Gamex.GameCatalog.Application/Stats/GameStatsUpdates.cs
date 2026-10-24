@@ -26,4 +26,7 @@ public interface IGameStatsStore
 {
     /// <summary>Atomically applies <paramref name="delta"/> (counts never go below 0) and records <paramref name="messageId"/> as processed.</summary>
     Task<StatsUpdateOutcome> ApplyAsync(string messageId, Guid gameId, StatsDelta delta, CancellationToken cancellationToken);
+
+    /// <returns>Number of deleted idempotency records.</returns>
+    Task<int> PurgeProcessedBeforeAsync(DateTime cutoff, CancellationToken cancellationToken);
 }

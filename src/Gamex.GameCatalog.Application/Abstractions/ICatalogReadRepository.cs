@@ -14,4 +14,12 @@ public interface ICatalogReadRepository
 
     /// <summary>Games with platforms.</summary>
     Task<List<Game>> GetGamesByIdAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// RAWG ids of games worth refreshing nightly: on exchange or for sale, or still without a cover.
+    /// Never-refreshed first, then least recently refreshed.
+    /// </summary>
+    Task<List<int>> GetRefreshCandidatesAsync(int take, CancellationToken cancellationToken);
+
+    Task MarkRefreshedAsync(int rawgId, DateTime refreshedAt, CancellationToken cancellationToken);
 }

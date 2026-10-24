@@ -143,6 +143,7 @@ Full replacement of the editable fields; platforms and genres are replaced by th
 | `description` | TEXT | |
 | `cover_image_url` | VARCHAR(500) | Cloudflare CDN URL pointing to S3 |
 | `cover_source_url` | VARCHAR(500) | RAWG image URL the stored cover was copied from; internal, not returned by the API |
+| `refreshed_at` | DATETIME(6) | Last nightly RAWG refresh (changed or not); indexed; internal |
 | `release_date` | DATE | |
 | `metacritic` | SMALLINT | |
 | `created_at` | DATETIME | |
@@ -212,7 +213,11 @@ SQS message ids already applied to `game_stats` (idempotent consumer, see §6.2)
 
 1. **On search:** When a user searches for a game title in the frontend, the request hits `/games/search`. The service queries the local `games` table. If fewer than 3 results are found, it falls through to the RAWG API, persists returned games (matched by `rawg_id`), and responds from the newly cached data. RAWG search results carry no description, so games imported this way have none until an admin sync or the nightly refresh fetches the detail. If RAWG fails, times out (3s per attempt, 7s total) or no API key is configured, the local results are returned with `200`.
 2. **On demand (Admin):** `POST /games/sync` accepts a RAWG slug and forces a full metadata refresh for that game.
-3. **Nightly background job:** Refreshes metadata (title, description, metacritic, cover) for all games that have at least one active listing in the last 30 days. Runs at 03:00 local time via a .NET `IHostedService` cron.
+3. **Nightly background job:** Runs daily at `NIGHTLY_REFRESH_TIME` (default 03:00) in `NIGHTLY_REFRESH_TIMEZONE` (default `Europe/Belgrade`; a time skipped by DST runs at the first valid instant, a repeated one runs once). Only one instance runs it: a MySQL `GET_LOCK` is taken, and other instances skip that night.
+   - Refreshes the full RAWG detail (title, description, metacritic, platforms, cover) of games that have a RAWG id and either are on exchange or for sale (`for_exchange_count + for_sale_count > 0`, standing in for "active listing", which this service cannot see) or still have no cover (retries failed cover copies).
+   - Least recently refreshed first (`games.refreshed_at`, never-refreshed first), at most `NIGHTLY_REFRESH_MAX_GAMES` (default 500) per night with 250 ms between RAWG calls, to stay within RAWG quotas. A game RAWG no longer knows is kept and marked refreshed; a failed call leaves it unmarked so it goes first next night; 5 consecutive failures abort the run.
+   - Changes go through the normal import, so `catalog.*` events are published as usual.
+   - Deletes `processed_library_events` rows older than 14 days.
 
 ### Image Storage
 
@@ -426,6 +431,10 @@ Docker image tag: `{ECR_REPO}/gamex-game-catalog-svc:{git-sha}`
 | `AWS_SERVICE_URL` | Local only: LocalStack endpoint for S3/SQS | — |
 | `DB_MIGRATE_ON_STARTUP` | Apply EF Core migrations at startup (default: true in Development) | ECS task definition |
 | `SQS_RETRY_DELAY_SECONDS` | Delay before a library event for an unknown game is redelivered (default 30) | ECS task definition |
+| `NIGHTLY_REFRESH_ENABLED` | Run the nightly job scheduler (default true) | ECS task definition |
+| `NIGHTLY_REFRESH_TIME` | Local run time, `HH:mm` (default `03:00`) | ECS task definition |
+| `NIGHTLY_REFRESH_TIMEZONE` | IANA time zone (default `Europe/Belgrade`) | ECS task definition |
+| `NIGHTLY_REFRESH_MAX_GAMES` | Max RAWG detail requests per night (default 500) | ECS task definition |
 | `JWT_PUBLIC_KEY` | RS256 public key for JWT validation (PEM; `\n` escapes allowed) | SSM Parameter Store |
 | `JWT_ISSUER` | Optional; expected `iss` claim | SSM Parameter Store |
 | `JWT_AUDIENCE` | Optional; expected `aud` claim | SSM Parameter Store |

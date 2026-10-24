@@ -56,6 +56,10 @@ namespace Gamex.GameCatalog.Infrastructure.Persistence.Migrations
                         .HasColumnType("varchar(200)")
                         .HasColumnName("rawg_slug");
 
+                    b.Property<DateTime?>("RefreshedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("refreshed_at");
+
                     b.Property<DateTime?>("ReleaseDate")
                         .HasColumnType("date")
                         .HasColumnName("release_date");
@@ -83,6 +87,9 @@ namespace Gamex.GameCatalog.Infrastructure.Persistence.Migrations
                     b.HasIndex("RawgSlug")
                         .IsUnique()
                         .HasDatabaseName("ux_games_rawg_slug");
+
+                    b.HasIndex("RefreshedAt")
+                        .HasDatabaseName("ix_games_refreshed_at");
 
                     b.HasIndex("ReleaseDate")
                         .HasDatabaseName("ix_games_release_date");

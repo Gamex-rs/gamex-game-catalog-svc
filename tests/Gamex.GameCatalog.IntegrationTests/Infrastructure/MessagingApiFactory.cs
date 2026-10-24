@@ -41,7 +41,12 @@ public sealed class MessagingApiFactory : ApiFactoryBase
 
     public AmazonSQSClient CreateSqsClient() => new(
         new BasicAWSCredentials("test", "test"),
-        new AmazonSQSConfig { ServiceURL = _localStack.GetConnectionString() });
+        new AmazonSQSConfig
+        {
+            ServiceURL = _localStack.GetConnectionString(),
+            // Same signing region as the service, so both see the same LocalStack queues.
+            AuthenticationRegion = "eu-central-1",
+        });
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {

@@ -31,6 +31,9 @@ public sealed class Game
     /// <summary>Bumped on any change; version for <c>catalog.game.upserted</c> events.</summary>
     public DateTime UpdatedAt { get; private set; }
 
+    /// <summary>Last nightly RAWG refresh, changed or not; the job picks the least recently refreshed games first.</summary>
+    public DateTime? RefreshedAt { get; private set; }
+
     public IReadOnlyCollection<Platform> Platforms => _platforms;
     public IReadOnlyCollection<Genre> Genres => _genres;
     public GameStats Stats { get; private set; }

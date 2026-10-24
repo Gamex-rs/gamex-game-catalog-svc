@@ -25,6 +25,22 @@ internal sealed class CatalogReadRepository(CatalogDbContext db) : ICatalogReadR
             .AsSplitQuery()
             .ToListAsync(cancellationToken);
 
+    public Task<List<int>> GetRefreshCandidatesAsync(int take, CancellationToken cancellationToken) =>
+        db.Games.AsNoTracking()
+            .Where(g => g.RawgId != null
+                        && (g.Stats.ForExchangeCount + g.Stats.ForSaleCount > 0 || g.CoverImageUrl == null))
+            // MySQL sorts NULL first in ascending order, so never-refreshed games come first.
+            .OrderBy(g => g.RefreshedAt)
+            .ThenBy(g => g.Id)
+            .Select(g => g.RawgId!.Value)
+            .Take(take)
+            .ToListAsync(cancellationToken);
+
+    public Task MarkRefreshedAsync(int rawgId, DateTime refreshedAt, CancellationToken cancellationToken) =>
+        db.Games
+            .Where(g => g.RawgId == rawgId)
+            .ExecuteUpdateAsync(s => s.SetProperty(g => g.RefreshedAt, Domain.Timestamps.ToStoragePrecision(refreshedAt)), cancellationToken);
+
     public Task<List<Game>> GetGamesByIdAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken) =>
         db.Games.AsNoTracking()
             .Include(g => g.Platforms)
