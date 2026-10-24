@@ -1,4 +1,5 @@
 using Gamex.GameCatalog.Api.Endpoints;
+using Gamex.GameCatalog.Application;
 using Gamex.GameCatalog.Infrastructure;
 using Gamex.GameCatalog.Infrastructure.Persistence;
 
@@ -6,6 +7,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi();
+builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 
 var app = builder.Build();

@@ -72,14 +72,25 @@ internal sealed class GameQueries(CatalogDbContext db) : IGameQueries
                     g.Stats.WantToBuyCount)))
             .SingleOrDefaultAsync(cancellationToken);
 
-    public async Task<IReadOnlyList<GameSummaryDto>> SearchAsync(string term, int limit, CancellationToken cancellationToken) =>
-        await db.Games.AsNoTracking()
+    public async Task<IReadOnlyList<GameSummaryDto>> SearchAsync(string term, int limit, CancellationToken cancellationToken)
+    {
+        // StartsWith is translated case-sensitively by MySql.EntityFrameworkCore; LIKE uses the column's case-insensitive collation.
+        var prefix = EscapeLike(term) + "%";
+
+        return await db.Games.AsNoTracking()
             .Where(g => g.Title.Contains(term))
-            .OrderBy(g => g.Title.StartsWith(term) ? 0 : 1)
+            .OrderBy(g => EF.Functions.Like(g.Title, prefix) ? 0 : 1)
             .ThenBy(g => g.Title)
             .Take(limit)
             .Select(ToSummary)
             .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>Escapes LIKE wildcards using MySQL's default escape character (backslash).</summary>
+    internal static string EscapeLike(string value) =>
+        value.Replace(@"\", @"\\", StringComparison.Ordinal)
+            .Replace("%", @"\%", StringComparison.Ordinal)
+            .Replace("_", @"\_", StringComparison.Ordinal);
 
     public async Task<IReadOnlyList<PlatformDto>> ListPlatformsAsync(CancellationToken cancellationToken) =>
         await db.Platforms.AsNoTracking()

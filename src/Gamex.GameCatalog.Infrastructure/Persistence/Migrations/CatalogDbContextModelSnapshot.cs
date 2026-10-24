@@ -30,6 +30,11 @@ namespace Gamex.GameCatalog.Infrastructure.Persistence.Migrations
                         .HasColumnType("varchar(500)")
                         .HasColumnName("cover_image_url");
 
+                    b.Property<string>("CoverSourceUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)")
+                        .HasColumnName("cover_source_url");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime")
                         .HasColumnName("created_at");
@@ -51,7 +56,7 @@ namespace Gamex.GameCatalog.Infrastructure.Persistence.Migrations
                         .HasColumnType("varchar(200)")
                         .HasColumnName("rawg_slug");
 
-                    b.Property<DateOnly?>("ReleaseDate")
+                    b.Property<DateTime?>("ReleaseDate")
                         .HasColumnType("date")
                         .HasColumnName("release_date");
 

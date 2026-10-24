@@ -5,7 +5,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="Gamex.GameCatalog.UnitTests" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Gamex.GameCatalog.UnitTests" />
+    <InternalsVisibleTo Include="Gamex.GameCatalog.IntegrationTests" />  </ItemGroup>
 
 </Project>

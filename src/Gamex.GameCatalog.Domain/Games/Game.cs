@@ -21,6 +21,9 @@ public sealed class Game
 
     /// <summary>Cloudflare CDN URL of the cover stored in S3.</summary>
     public string? CoverImageUrl { get; private set; }
+
+    /// <summary>RAWG image URL the stored cover was copied from; a different RAWG URL means the cover must be re-uploaded.</summary>
+    public string? CoverSourceUrl { get; private set; }
     public DateOnly? ReleaseDate { get; private set; }
     public short? Metacritic { get; private set; }
     public DateTime CreatedAt { get; private set; }
@@ -53,6 +56,23 @@ public sealed class Game
         IEnumerable<Platform> platforms,
         IEnumerable<Genre> genres,
         DateTime now) => Apply(metadata, platforms, genres, now);
+
+    public bool NeedsCoverFrom(string? sourceUrl) =>
+        !string.IsNullOrWhiteSpace(sourceUrl) && sourceUrl != CoverSourceUrl;
+
+    public GameChange SetCover(string coverImageUrl, string sourceUrl, DateTime now)
+    {
+        if (CoverImageUrl == coverImageUrl && CoverSourceUrl == sourceUrl)
+        {
+            return GameChange.None;
+        }
+
+        var replicated = CoverImageUrl != coverImageUrl;
+        CoverImageUrl = coverImageUrl;
+        CoverSourceUrl = sourceUrl;
+        UpdatedAt = now;
+        return replicated ? GameChange.Replicated : GameChange.Internal;
+    }
 
     private GameChange Apply(
         GameMetadata metadata,

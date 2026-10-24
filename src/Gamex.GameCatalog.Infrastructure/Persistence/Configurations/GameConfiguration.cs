@@ -16,6 +16,7 @@ internal sealed class GameConfiguration : IEntityTypeConfiguration<Game>
         builder.Property(g => g.Title).HasMaxLength(255).IsRequired();
         builder.Property(g => g.Description).HasColumnType("text");
         builder.Property(g => g.CoverImageUrl).HasMaxLength(500);
+        builder.Property(g => g.CoverSourceUrl).HasMaxLength(500);
         builder.Property(g => g.CreatedAt).HasColumnType("datetime");
 
         builder.HasIndex(g => g.RawgId).IsUnique();

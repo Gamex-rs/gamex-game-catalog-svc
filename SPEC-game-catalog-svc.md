@@ -112,6 +112,7 @@ All responses are JSON. Authentication is **not required** for read endpoints. A
 | `title` | VARCHAR(255) | Not null |
 | `description` | TEXT | |
 | `cover_image_url` | VARCHAR(500) | Cloudflare CDN URL pointing to S3 |
+| `cover_source_url` | VARCHAR(500) | RAWG image URL the stored cover was copied from; internal, not returned by the API |
 | `release_date` | DATE | |
 | `metacritic` | SMALLINT | |
 | `created_at` | DATETIME | |
@@ -170,18 +171,19 @@ A row in `game_stats` is created automatically (via DB trigger or application lo
 
 ### Sync Strategy
 
-1. **On search:** When a user searches for a game title in the frontend, the request hits `/games/search`. The service queries the local `games` table. If fewer than 3 results are found, it falls through to the RAWG API, persists returned games, and responds from the newly cached data.
+1. **On search:** When a user searches for a game title in the frontend, the request hits `/games/search`. The service queries the local `games` table. If fewer than 3 results are found, it falls through to the RAWG API, persists returned games (matched by `rawg_id`), and responds from the newly cached data. RAWG search results carry no description, so games imported this way have none until an admin sync or the nightly refresh fetches the detail. If RAWG fails, times out (3s per attempt, 7s total) or no API key is configured, the local results are returned with `200`.
 2. **On demand (Admin):** `POST /games/sync` accepts a RAWG slug and forces a full metadata refresh for that game.
 3. **Nightly background job:** Refreshes metadata (title, description, metacritic, cover) for all games that have at least one active listing in the last 30 days. Runs at 03:00 local time via a .NET `IHostedService` cron.
 
 ### Image Storage
 
-When a game is synced from RAWG:
-1. Download cover image from RAWG CDN URL
-2. Upload to S3: `s3://gamex-media/game-covers/{rawg_id}.jpg`
-3. Store Cloudflare CDN URL in `games.cover_image_url`
+When a game is synced from RAWG and its RAWG image URL differs from `games.cover_source_url` (new game, or RAWG changed the cover), the cover is queued for a background worker so the sync itself stays fast:
+1. Download cover image from RAWG CDN URL (max 10 MB)
+2. Upload to S3: `s3://{S3_MEDIA_BUCKET}/{S3_MEDIA_PREFIX}game-covers/{rawg_id}.jpg`
+3. Store `{CLOUDFLARE_MEDIA_BASE_URL}/{key}?v={hash}` in `games.cover_image_url` and the RAWG URL in `games.cover_source_url`. The `v` hash is derived from the RAWG URL, so the CDN serves the new image when the cover changes even though the S3 key stays the same.
+4. Publish `catalog.game.upserted` (the cover is a replicated field)
 
-Cover images are never fetched from RAWG at request time — only during sync.
+A freshly imported game therefore has `coverImageUrl: null` for a moment. Cover images are never fetched from RAWG at request time — only in the background after a sync. A failed copy is logged and retried by the next sync of that game.
 
 ### Publishing after sync
 
@@ -366,5 +368,9 @@ Docker image tag: `{ECR_REPO}/gamex-game-catalog-svc:{git-sha}`
 | `SQS_CATALOG_EVENTS_URL` | SQS queue URL (published) | SSM Parameter Store |
 | `S3_MEDIA_BUCKET` | S3 bucket name for cover images | SSM Parameter Store |
 | `CLOUDFLARE_MEDIA_BASE_URL` | Cloudflare media base URL | SSM Parameter Store |
+| `S3_MEDIA_PREFIX` | Key prefix per environment (`dev/`, `prod/`); the media bucket is shared | ECS task definition |
+| `RAWG_BASE_URL` | Optional; defaults to `https://api.rawg.io/api/` | — |
+| `AWS_SERVICE_URL` | Local only: LocalStack endpoint for S3/SQS | — |
+| `DB_MIGRATE_ON_STARTUP` | Apply EF Core migrations at startup (default: true in Development) | ECS task definition |
 | `JWT_PUBLIC_KEY` | RS256 public key for JWT validation | SSM Parameter Store |
 | `ASPNETCORE_ENVIRONMENT` | `Development` / `Production` | ECS task definition |

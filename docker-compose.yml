@@ -11,6 +11,11 @@ services:
       - SQS_LIBRARY_EVENTS_URL=http://localstack:4566/000000000000/gamex-library-events
       - SQS_CATALOG_EVENTS_URL=http://localstack:4566/000000000000/gamex-catalog-events
       - AWS_DEFAULT_REGION=eu-central-1
+      - AWS_SERVICE_URL=http://localstack:4566
+      - S3_MEDIA_BUCKET=gamex-media
+      - S3_MEDIA_PREFIX=dev/
+      # LocalStack serves the bucket directly in place of Cloudflare.
+      - CLOUDFLARE_MEDIA_BASE_URL=http://localhost:4566/gamex-media
     depends_on:
       catalog-db:
         condition: service_healthy

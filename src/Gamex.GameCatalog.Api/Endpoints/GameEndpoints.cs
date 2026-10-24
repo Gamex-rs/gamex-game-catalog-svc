@@ -4,7 +4,6 @@ namespace Gamex.GameCatalog.Api.Endpoints;
 
 internal static class GameEndpoints
 {
-    private const int SearchLimit = 10;
     private const int SearchMinLength = 2;
 
     public static IEndpointRouteBuilder MapGameEndpoints(this IEndpointRouteBuilder app)
@@ -42,7 +41,7 @@ internal static class GameEndpoints
         return Results.Ok(await queries.ListAsync(query, ct));
     }
 
-    private static async Task<IResult> SearchGames(IGameQueries queries, CancellationToken ct, string? q = null)
+    private static async Task<IResult> SearchGames(IGameSearchService search, CancellationToken ct, string? q = null)
     {
         var term = q?.Trim();
         if (term is null || term.Length < SearchMinLength)
@@ -53,7 +52,7 @@ internal static class GameEndpoints
             });
         }
 
-        return Results.Ok(await queries.SearchAsync(term, SearchLimit, ct));
+        return Results.Ok(await search.SearchAsync(term, ct));
     }
 
     private static async Task<IResult> GetGame(Guid id, IGameQueries queries, CancellationToken ct)
