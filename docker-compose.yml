@@ -1,0 +1,48 @@
+services:
+  game-catalog-svc:
+    build: .
+    ports:
+      - "5001:8080"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - DB_CONNECTION_STRING=Server=catalog-db;Database=games_db;User=root;Password=localdev;
+      - SQS_LIBRARY_EVENTS_URL=http://localstack:4566/000000000000/gamex-library-events
+      - SQS_CATALOG_EVENTS_URL=http://localstack:4566/000000000000/gamex-catalog-events
+      - AWS_DEFAULT_REGION=eu-central-1
+    depends_on:
+      catalog-db:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+
+  catalog-db:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: games_db
+      MYSQL_ROOT_PASSWORD: localdev
+    ports:
+      - "3307:3306"
+    volumes:
+      - catalog-db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-plocaldev"]
+      interval: 5s
+      retries: 20
+
+  localstack:
+    image: localstack/localstack:3
+    ports:
+      - "4566:4566"
+    environment:
+      SERVICES: sqs,s3
+    volumes:
+      - ./localstack-init:/etc/localstack/init/ready.d
+    healthcheck:
+      test: ["CMD", "awslocal", "sqs", "get-queue-url", "--queue-name", "gamex-catalog-events"]
+      interval: 5s
+      retries: 20
+
+volumes:
+  catalog-db-data:

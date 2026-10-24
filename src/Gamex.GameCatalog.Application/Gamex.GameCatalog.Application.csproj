@@ -1,0 +1,11 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Gamex.GameCatalog.Domain\Gamex.GameCatalog.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Gamex.GameCatalog.UnitTests" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,23 @@
+# syntax=docker/dockerfile:1
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /source
+
+# Restore first so the layer is cached until a project or package version changes.
+COPY Directory.Build.props Directory.Packages.props ./
+COPY src/Gamex.GameCatalog.Domain/*.csproj src/Gamex.GameCatalog.Domain/
+COPY src/Gamex.GameCatalog.Application/*.csproj src/Gamex.GameCatalog.Application/
+COPY src/Gamex.GameCatalog.Infrastructure/*.csproj src/Gamex.GameCatalog.Infrastructure/
+COPY src/Gamex.GameCatalog.Api/*.csproj src/Gamex.GameCatalog.Api/
+RUN dotnet restore src/Gamex.GameCatalog.Api/Gamex.GameCatalog.Api.csproj
+
+COPY src/ src/
+RUN dotnet publish src/Gamex.GameCatalog.Api/Gamex.GameCatalog.Api.csproj \
+    --configuration Release --no-restore --output /app
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+WORKDIR /app
+COPY --from=build /app .
+USER $APP_UID
+EXPOSE 8080
+ENTRYPOINT ["dotnet", "Gamex.GameCatalog.Api.dll"]
